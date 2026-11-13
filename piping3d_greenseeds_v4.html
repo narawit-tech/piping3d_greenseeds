@@ -1,0 +1,281 @@
+<!DOCTYPE html><html lang="th"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ระบบท่อน้ำ 3D - กรีนซีดส์</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:dark}
+html,body{height:100%;margin:0;background:#0d1828;color:#e8eef7;font-family:Tahoma,"Noto Sans Thai",sans-serif;overflow:hidden}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#ui{position:absolute;top:calc(8px + env(safe-area-inset-top,0px));left:8px;width:278px;max-height:86vh;overflow:auto;background:rgba(9,20,36,.92);border:1px solid #2c4467;border-radius:12px;padding:10px 12px;font-size:13px;box-shadow:0 6px 24px #0008}
+#hd{display:flex;justify-content:space-between;align-items:center}
+h1{font-size:15px;margin:0}
+h2{font-size:12px;margin:10px 0 4px;color:#7fb2ff;letter-spacing:.3px;border-top:1px solid #243a5a;padding-top:8px}
+.row{display:flex;justify-content:space-between;align-items:center;margin:4px 0;gap:6px}
+button{background:#1d3558;color:#e8eef7;border:1px solid #3a5a88;border-radius:6px;padding:4px 9px;font:inherit;cursor:pointer}
+button.on{background:#14803f;border-color:#2ecc71}button.off{background:#8a2424;border-color:#e74c3c}
+.s{color:#9fb6d6;line-height:1.75;font-size:12px}
+.sw{display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:middle;margin:0 5px 0 0;border:1px solid #fff6}
+#st{color:#ffd37a}#body.h{display:none}
+</style></head><body>
+<div id="ui"><div id="hd"><h1>ระบบท่อน้ำ 3D</h1><button id="fold">ซ่อน</button></div>
+<div id="body">
+<h2>ปั๊ม</h2><div id="pumps"></div>
+<h2>วาล์ว (คลิกที่วาล์วใน 3D ได้)</h2><div id="vl"></div>
+<div class="row" style="margin-top:8px"><button id="ao">เปิดทั้งหมด</button><button id="ac">ปิดทั้งหมด</button><button id="rv">รีเซ็ตมุมมอง</button></div>
+<h2>การแสดงผล</h2>
+<div class="row"><span>ป้ายชนิดท่อ</span><button id="b1" class="on">แสดง</button></div>
+<div class="row"><span>ป้ายน้ำเข้า-ออก</span><button id="b2" class="on">แสดง</button></div>
+<h2>สถานะ</h2><div class="s" id="lv"></div><div class="s" id="st"></div>
+<h2>ชนิดท่อ</h2><div class="s">
+<span class="sw" style="background:#f2994a"></span>PVC-2" &nbsp;<span class="sw" style="background:#f2d14a"></span>PVC-3"<br>
+<span class="sw" style="background:#9a8fd8"></span>GSP-3" (ท่อเหล็ก) &nbsp;<span class="sw" style="background:#4cc38a"></span>PE-2"<br>
+ท่อสว่างมีจุดฟ้าไหล = มีน้ำ • ท่อมืด = ไม่มีน้ำ</div>
+<h2>ข้อต่อ</h2><div class="s">
+ข้องอ = ท่อโค้ง + ปลอกสวม • สามทาง/สี่ทาง = ตัวข้อต่อสีเทา<br>
+ยูเนี่ยน = น็อตหกเหลี่ยมสีขาว • ข้อต่อตรง = ปลอกกลมบนท่อยาว<br>
+ข้อลด = กรวย • เปลี่ยนวัสดุ = น็อตทอง 2 สี • เช็ควาล์ว = ตัวเทาเข้ม<br>
+ป้ายสีฟ้า <b>น้ำเข้า</b> / ป้ายสีส้ม <b>น้ำออก</b></div>
+</div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const V3=THREE.Vector3,M=THREE.Mesh,Cy=THREE.CylinderGeometry,Sp=THREE.SphereGeometry,Bx=THREE.BoxGeometry,Y=new V3(0,1,0),X1=new V3(1,0,0),Z1=new V3(0,0,1);
+const sc=new THREE.Scene();sc.background=new THREE.Color(0x0d1828);sc.fog=new THREE.Fog(0x0d1828,45,95);
+const cam=new THREE.PerspectiveCamera(45,1,.1,200);
+const rd=new THREE.WebGLRenderer({antialias:true});rd.setPixelRatio(Math.min(devicePixelRatio,2));rd.shadowMap.enabled=true;rd.shadowMap.type=THREE.PCFSoftShadowMap;document.body.appendChild(rd.domElement);
+const ctl=new THREE.OrbitControls(cam,rd.domElement);ctl.enableDamping=true;ctl.maxPolarAngle=Math.PI*.52;ctl.minDistance=4;ctl.maxDistance=48;
+function resetCam(){cam.position.set(0,15,20);ctl.target.set(0,1,0)}resetCam();
+sc.add(new THREE.AmbientLight(0xffffff,.5));sc.add(new THREE.HemisphereLight(0xcfe0ff,0x1a2433,.65));
+const dl=new THREE.DirectionalLight(0xffffff,.9);dl.position.set(10,22,12);dl.castShadow=true;dl.shadow.mapSize.set(2048,2048);Object.assign(dl.shadow.camera,{left:-22,right:22,top:16,bottom:-16,near:1,far:70});dl.shadow.bias=-.0004;sc.add(dl);
+const mat=(c,o)=>new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.55},o||{}));
+const A=m=>{m.castShadow=m.receiveShadow=true;sc.add(m);return m};
+const gnd=new M(new THREE.PlaneGeometry(42,28),mat(0x172a42,{roughness:.9}));gnd.rotation.x=-Math.PI/2;gnd.position.y=-.01;gnd.receiveShadow=true;sc.add(gnd);
+sc.add(new THREE.GridHelper(42,42,0x2a4163,0x1d3351));
+function cyl(r,l,m,p,d,s,r2){const g=new M(new Cy(r2===undefined?r:r2,r,l,s||18),m);g.position.copy(p);g.quaternion.setFromUnitVectors(Y,d);return A(g)}
+function box(w,h,d,m,x,y,z){const g=new M(new Bx(w,h,d),m);g.position.set(x,y,z);return A(g)}
+const P=a=>new V3((a[0]-450)/32,a[2]===undefined?.6:a[2],(a[1]-420)/32);
+function rr(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath()}
+function lab(t,x,y,z,s,o){o=o||{};s=s||1;const cv=document.createElement('canvas');cv.width=512;cv.height=96;const g=cv.getContext('2d');g.font='bold 44px Tahoma,sans-serif';g.textAlign='center';
+if(o.bg){const w=Math.min(500,g.measureText(t).width+48);g.fillStyle=o.bg;rr(g,256-w/2,10,w,76,28);g.fill();g.fillStyle='#fff';g.fillText(t,256,66)}
+else{g.lineWidth=8;g.strokeStyle='#0a1628';g.strokeText(t,256,64);g.fillStyle='#fff';g.fillText(t,256,64)}
+const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthTest:false}));sp.position.set(x,y,z);sp.scale.set(3.4*s,.64*s,1);sp.renderOrder=5;sc.add(sp);return sp}
+const portTags=[],pipeLabels=[];
+function tag(type,p,dy){const o={in:['น้ำเข้า','#1f7ae0'],out:['น้ำออก','#e8702a'],io:['เข้า-ออก','#6a5acd']}[type];portTags.push(lab(o[0],p.x,p.y+(dy||.6),p.z,.5,{bg:o[1]}))}
+// ---------- network (direction follows arrows in the drawing)
+const E=[
+{id:'A1',f:'S',t:'J1',p:[[300,640,-.6],[300,640],[300,687],[103,687],[103,608]]},
+{id:'A2',f:'J1',t:'T1in',p:[[103,608],[103,462],[80,462],[80,462,1.35],[80,425,1.35]],v:'V2',vp:[103,553]},
+{id:'B1',f:'J1',t:'O1',p:[[103,608],[170,608]],v:'V1',vp:[147,608]},
+{id:'E1',f:'T1o',t:'Pin',p:[[113,408],[190,408],[190,408,.25],[190,340,.25],[762,340,.25],[762,450,.25],[762,450,.55],[750,450,.55]],v:'V3',vp:[137,408]},
+{id:'PU',f:'Pin',t:'Pout',pump:1},
+{id:'E2a',f:'Pout',t:'N590',m:'GSP',r:.15,p:[[720,450,.55],[645,450,.55],[645,450,.25],[645,400,.25],[590,400,.25]]},
+{id:'E2b',f:'N590',t:'N410',r:.15,p:[[590,400,.25],[410,400,.25],[410,458,.25]]},
+{id:'E3',f:'N410',t:'T2in',m:'GSP',r:.15,p:[[410,458,.25],[410,565,.25],[360,565,.25],[360,565,4.1],[335,565,4.1]]},
+{id:'T2D',f:'T2o',t:'N398',r:.15,p:[[321,545],[321,449],[370,449],[370,398]]},
+{id:'X2',f:'N398',t:'N376',r:.15,p:[[370,398],[370,376]]},
+{id:'X3',f:'N376',t:'NR',r:.15,p:[[370,376],[370,320],[403,320]]},
+{id:'M1',f:'NR',t:'N458',p:[[417,320],[458,320]]},
+{id:'M2',f:'N458',t:'N591b',p:[[458,320],[591,320]]},
+{id:'L1',f:'N458',t:'N591b',p:[[458,320],[458,245],[591,245],[591,320]],v:'V8',vp:[458,277]},
+{id:'L1b',f:'N591b',t:'N591',p:[[591,320],[591,376]]},
+{id:'M3',f:'N591b',t:'N620',p:[[591,320],[620,320]]},
+{id:'M4',f:'N620',t:'O4',p:[[620,320],[810,320]]},
+{id:'U1',f:'N620',t:'N620b',p:[[620,320],[620,247]]},
+{id:'U2',f:'N620b',t:'O5',p:[[620,247],[620,160]],v:'V12',vp:[620,180]},
+{id:'G',f:'N620b',t:'O6',p:[[620,247],[688,247],[775,247]],v:'V11',vp:[655,247]},
+{id:'FLa',f:'N398',t:'N265',p:[[370,398],[265,398]],v:'V4',vp:[335,398]},
+{id:'FLb',f:'N265',t:'Fi',p:[[265,398],[222,398],[222,398,1.6],[222,483,1.6]]},
+{id:'FF',f:'Fi',t:'Fo',filter:1},
+{id:'Y1',f:'Fo',t:'J272',p:[[246,483,1],[246,272,1]]},
+{id:'Y2',f:'J272',t:'J228',p:[[246,272,1],[246,228,1]]},
+{id:'Y3',f:'J228',t:'O0',p:[[246,228,1],[246,198,1],[140,198,1]]},
+{id:'B2',f:'J228',t:'NPE',p:[[246,228,1],[382,228,1]],v:'V7',vp:[328,228,1]},
+{id:'B2p',f:'NPE',t:'O2',m:'PE',p:[[382,228,1],[443,228,1]]},
+{id:'B3',f:'N308',t:'J272',p:[[308,376],[308,272],[308,272,1],[246,272,1]],v:'V6',vp:[308,305]},
+{id:'H1',f:'N265',t:'N308',p:[[265,398],[265,376],[308,376]],v:'V5',vp:[290,376]},
+{id:'H2',f:'N308',t:'N376',p:[[308,376],[370,376]]},
+{id:'HR',f:'N376',t:'N476',p:[[370,376],[476,376]]},
+{id:'PTb',f:'N476',t:'PTk',p:[[476,376],[519,376],[519,490],[519,490,1]]},
+{id:'BP',f:'N476',t:'N561',p:[[476,376],[476,350],[537,350],[537,376],[561,376]],v:'V9',vp:[506,350]},
+{id:'ST',f:'N561',t:'NQ',dead:1,p:[[561,376],[561,376,.95],[561,418,.95],[448,418,.95],[448,465,.95]],v:'V13',vp:[495,418,.95]},
+{id:'HR3',f:'N561',t:'N591',p:[[561,376],[591,376]]},
+{id:'H7',f:'N591',t:'O3',p:[[591,376],[660,376]],v:'V10',vp:[635,376]}];
+const VN={V1:'จ่ายน้ำ 1 (ซ้ายล่าง)',V2:'ท่อเติมบ่อ Tank1',V3:'ทางออก Tank1 → ปั๊ม',V4:'ทางเข้าถังกรอง',V5:'หัวท่อซ้าย',V6:'ท่อหัวท่อ → หลังกรอง',V7:'สาขา PE-2"',V8:'ลูปท่อด้านบน',V9:'บายพาสถังแรงดัน',V10:'ปลายท่อกลาง',V11:'สนามหญ้า',V12:'ท่อขึ้นเหนือ',V13:'ท่อสำรอง (?)'};
+const EE=[],valves={};
+E.forEach(e=>{const pts=e.p&&e.p.map(P);if(!e.v){EE.push(Object.assign({},e,{pts}));return}
+const vp=P(e.vp);let bi=0,bd=1e9,bq;
+for(let i=0;i<pts.length-1;i++){const a=pts[i],ab=pts[i+1].clone().sub(a),L=ab.lengthSq();if(L<1e-6)continue;const t=Math.max(0,Math.min(1,vp.clone().sub(a).dot(ab)/L)),q=a.clone().addScaledVector(ab,t),d=q.distanceTo(vp);if(d<bd){bd=d;bi=i;bq=q}}
+const m='m_'+e.v;EE.push(Object.assign({},e,{id:e.id+'a',t:m,pts:[...pts.slice(0,bi+1),bq]}));EE.push(Object.assign({},e,{id:e.id+'b',f:m,gate:e.v,pts:[bq,...pts.slice(bi+1)]}));
+valves[e.v]={pos:bq,dir:pts[bi+1].clone().sub(pts[bi]).normalize(),open:true}});
+const st={sub:true,pump:true};const lv=[.6,.6];
+const COL={PVC2:0xf2994a,PVC3:0xf2d14a,GSP3:0x9a8fd8,PE2:0x4cc38a},NM={PVC2:'PVC-2"',PVC3:'PVC-3"',GSP3:'GSP-3"',PE2:'PE-2"'};
+const FM={};const fmat=k=>FM[k]||(FM[k]=mat(new THREE.Color(COL[k]).multiplyScalar(.82).getHex(),{roughness:.4}));
+const pg=new Sp(.07,8,8),pm=new THREE.MeshBasicMaterial({color:0x7be3ff});
+// ---------- pipes with real bends, sockets, couplings
+function buildEdge(e){const raw=e.pts,pts=[];raw.forEach(p=>{if(!pts.length||pts[pts.length-1].distanceTo(p)>1e-3)pts.push(p)});e.pts=pts;
+const r=e.r=e.r||.1;e.m=e.m||'PVC';e.k=e.m+(r>.12?'3':'2');e.base=new THREE.Color(COL[e.k]);e.fm=fmat(e.k);
+e.mat=new THREE.MeshStandardMaterial({color:COL[e.k],transparent:true,opacity:.78,roughness:.35});
+const n=pts.length,L=[],D=[];for(let i=0;i<n-1;i++){const d=pts[i+1].clone().sub(pts[i]);L.push(d.length());D.push(d.normalize())}
+const Rb=[];for(let i=1;i<n-1;i++)Rb[i]=D[i-1].dot(D[i])<.99?Math.min(2.4*r,.45*L[i-1],.45*L[i]):0;
+const hub=(p,d)=>cyl(r*1.3,.16,e.fm,p,d,16);
+const cl=[pts[0].clone()];
+for(let i=0;i<n-1;i++){
+if(i>0&&Rb[i]>0){const R=Rb[i],a=pts[i].clone().addScaledVector(D[i-1],-R),c=a.clone().addScaledVector(D[i],R),ap=[];
+for(let k=0;k<=8;k++){const th=k/8*Math.PI/2;ap.push(c.clone().addScaledVector(D[i],-R*Math.cos(th)).addScaledVector(D[i-1],R*Math.sin(th)))}
+A(new M(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(ap),10,r,12),e.mat));hub(ap[0],D[i-1]);hub(ap[8],D[i]);ap.forEach(p=>cl.push(p))}
+const s=pts[i].clone().addScaledVector(D[i],i>0?Rb[i]:0),en=pts[i+1].clone().addScaledVector(D[i],-(i+1<n-1?Rb[i+1]:0)),l=s.distanceTo(en);
+if(l>1e-3){cyl(r,l,e.mat,s.clone().add(en).multiplyScalar(.5),D[i],14);
+if(l>3){const k=Math.floor(l/2.8);for(let j=1;j<=k;j++){const p=s.clone().addScaledVector(D[i],l*j/(k+1));cyl(r*1.3,.22,e.fm,p,D[i],16);[-.11,.11].forEach(o=>cyl(r*1.45,.04,e.fm,p.clone().addScaledVector(D[i],o),D[i],16))}}}
+cl.push(s);cl.push(en)}
+cl.push(pts[n-1]);e.cl=cl;e.cum=[0];for(let k=1;k<cl.length;k++)e.cum.push(e.cum[k-1]+cl[k].distanceTo(cl[k-1]));e.len=e.cum[e.cum.length-1];
+if(e.len>2.4){let bl=0,bm;for(let i=0;i<n-1;i++)if(L[i]>bl){bl=L[i];bm=pts[i].clone().addScaledVector(D[i],L[i]/2)}pipeLabels.push(lab(NM[e.k],bm.x,bm.y+.4,bm.z,.4))}
+e.n=Math.max(1,Math.round(e.len/1));e.ps=[];if(!e.dead)for(let i=0;i<e.n;i++){const m=new M(pg,pm);m.visible=false;sc.add(m);e.ps.push(m)}}
+EE.forEach(e=>{if(e.pts)buildEdge(e)});
+// ---------- tees / crosses
+const inc={};EE.forEach(e=>{if(!e.pts)return;const p=e.pts,n=p.length;(inc[e.f]=inc[e.f]||[]).push({p:p[0],d:p[1].clone().sub(p[0]).normalize(),r:e.r,k:e.k});(inc[e.t]=inc[e.t]||[]).push({p:p[n-1],d:p[n-2].clone().sub(p[n-1]).normalize(),r:e.r,k:e.k})});
+Object.keys(inc).forEach(k=>{const a=inc[k];if(a.length<3)return;const c=a[0].p,rm=Math.max.apply(null,a.map(x=>x.r)),m=fmat(a.find(x=>x.r==rm).k);
+A(new M(new Sp(rm*1.3,16,12),m)).position.copy(c);const seen=[];
+a.forEach(x=>{if(seen.some(s=>s.dot(x.d)>.99))return;seen.push(x.d);cyl(rm*1.3,.34,m,c.clone().addScaledVector(x.d,.17),x.d,16);cyl(rm*1.5,.1,m,c.clone().addScaledVector(x.d,.33),x.d,16)})});
+function near(p){let b,bd=1e9,be;EE.forEach(e=>{if(!e.pts)return;for(let i=0;i<e.pts.length-1;i++){const a=e.pts[i],ab=e.pts[i+1].clone().sub(a),L=ab.lengthSq();if(L<1e-6)continue;const t=Math.max(0,Math.min(1,p.clone().sub(a).dot(ab)/L)),d=a.clone().addScaledVector(ab,t).distanceTo(p);if(d<bd){bd=d;b=ab.clone().normalize();be=e}}});return{d:b,e:be}}
+// ---------- unions (hex nut + sockets)
+const white=mat(0xeef2f5,{roughness:.35}),gold=mat(0xd9a441,{roughness:.35,metalness:.4}),steel=mat(0xc9d0d8,{roughness:.3,metalness:.45});
+[[170,408],[205,687],[697,450,.55],[452,418,.95]].forEach(a=>{const p=P(a),n=near(p),r=n.e.r;cyl(r*1.75,.2,white,p,n.d,6);[-.16,.16].forEach(o=>cyl(r*1.3,.12,n.e.fm,p.clone().addScaledVector(n.d,o),n.d,16));[-.11,.11].forEach(o=>cyl(r*1.5,.03,white,p.clone().addScaledVector(n.d,o),n.d,16))});
+// ---------- material transition adapters (two colours + gold nut)
+function tr(a,d,kA,kB,r){const p=P(a);cyl(r*1.3,.15,fmat(kA),p.clone().addScaledVector(d,-.12),d,16);cyl(r*1.3,.15,fmat(kB),p.clone().addScaledVector(d,.12),d,16);cyl(r*1.65,.1,gold,p,d,6)}
+tr([382,228,1],X1,'PVC2','PE2',.1);tr([590,400,.25],new V3(-1,0,0),'GSP3','PVC3',.15);tr([410,458,.25],Z1,'PVC3','GSP3',.15);
+// ---------- reducers (3" -> 2")
+function red(a,d){const p=P(a),m=fmat('PVC3');cyl(.15,.46,m,p,d,24,.1);cyl(.2,.08,m,p.clone().addScaledVector(d,-.24),d,16);cyl(.14,.08,fmat('PVC2'),p.clone().addScaledVector(d,.24),d,16)}
+red([410,320],X1);red([364,398],new V3(-1,0,0));
+// ---------- check valve
+{const p=P([380,565,.25]),d=new V3(-1,0,0),dk=mat(0x3b4654,{roughness:.4,metalness:.3});cyl(.24,.5,dk,p,d,24);cyl(.17,.2,dk,p.clone().addScaledVector(d,.33),d,20,.24);cyl(.17,.2,dk,p.clone().addScaledVector(d,-.33),d,20,.24);[-.28,.28].forEach(o=>cyl(.27,.05,steel,p.clone().addScaledVector(d,o),d,24));lab('เช็ควาล์ว',p.x,.95,p.z,.5)}
+// ---------- open ends / outlets
+const drops=[];
+function endCap(id,name,floor,dead){const e=EE.find(x=>x.id==id),p=e.pts[e.pts.length-1],d=e.pts[e.pts.length-1].clone().sub(e.pts[e.pts.length-2]).normalize();
+if(dead){A(new M(new Sp(e.r*1.5,14,12),white)).position.copy(p);lab(name,p.x,p.y+.7,p.z,.7);return}
+cyl(e.r*1.55,.08,steel,p,d,18);cyl(e.r*1.3,.14,e.fm,p.clone().addScaledVector(d,-.1),d,16);if(name)lab(name,p.x,p.y+.75,p.z,.7);
+for(let i=0;i<3;i++){const m=new M(new Sp(.05,8,8),pm);m.visible=false;sc.add(m);drops.push({m,e,p:p.clone(),floor,i})}}
+[['B1b','จ่ายน้ำ 1',0],['Y3','น้ำอุปโภค บริโภค',0],['B2p','ปลายท่อ PE',0],['H7b','ปลายท่อ',0],['M4','สิ้นสุดทางน้ำ',0],['U2b','ปลายท่อเหนือ',0],['Gb','สนามหญ้า',0]].forEach(a=>endCap(a[0],a[1],a[2]));
+endCap('A2b','',.35);endCap('STb','? ยังไม่มีจุดเชื่อม',0,1);
+// ---------- tanks
+const tk={};
+function slab(x,z,r){const m=new M(new Cy(r,r,.1,40),mat(0x6a7480,{roughness:.9}));m.position.set(x,.05,z);m.receiveShadow=true;sc.add(m)}
+// Tank1: rectangular pond
+{const X=(80-450)/32,Z=(408-420)/32,w=2.6,d=2,h=1.1,t=.14,cm=mat(0xc3c9d0,{roughness:.85});
+box(w+2*t+.5,.1,d+2*t+.5,mat(0x7d8792,{roughness:.9}),X,.05,Z);
+box(w+2*t,h,t,cm,X,h/2+.1,Z-d/2-t/2);box(w+2*t,h,t,cm,X,h/2+.1,Z+d/2+t/2);box(t,h,d,cm,X-w/2-t/2,h/2+.1,Z);box(t,h,d,cm,X+w/2+t/2,h/2+.1,Z);
+box(w+2*t+.06,.05,t+.06,mat(0xe2e6ea),X,h+.12,Z-d/2-t/2);box(w+2*t+.06,.05,t+.06,mat(0xe2e6ea),X,h+.12,Z+d/2+t/2);box(t+.06,.05,d,mat(0xe2e6ea),X-w/2-t/2,h+.12,Z);box(t+.06,.05,d,mat(0xe2e6ea),X+w/2+t/2,h+.12,Z);
+box(w,.05,d,mat(0x6b7782),X,.13,Z);
+const wm=new M(new Bx(w-.04,.9,d-.04),new THREE.MeshStandardMaterial({color:0x2d8cff,transparent:true,opacity:.7,roughness:.15}));wm.position.set(X,.9,Z);sc.add(wm);tk.T1={w:wm,y0:.15,H:.9};
+lab('Tank1 (บ่อน้ำสี่เหลี่ยม)',X,h+1,Z-.2,.9);
+tag('in',P([80,425,1.35]),.55);tag('out',P([128,408,.6]),.6)}
+// Tank2: water tower (tapered column + dish + drum)
+{const X=(318-450)/32,Z=(565-420)/32;slab(X,Z,1.3);
+const col=A(new M(new Cy(.34,.62,3.5,28),mat(0xe3b873,{roughness:.75})));col.position.set(X,1.75,Z);
+[.7,1.5,2.3,3].forEach(y=>{const t=new M(new THREE.TorusGeometry(.34+(3.5-y)/3.5*.28+.01,.02,6,28),mat(0xb8905a));t.rotation.x=Math.PI/2;t.position.set(X,y,Z);sc.add(t)});
+const dish=A(new M(new Cy(1.3,.42,.45,36),mat(0x4d5a52,{roughness:.6})));dish.position.set(X,3.6,Z);
+const sh=new M(new Cy(1.05,1.05,1,36,1,true),new THREE.MeshStandardMaterial({color:0x9fd0f0,transparent:true,opacity:.3,side:THREE.DoubleSide}));sh.position.set(X,4.35,Z);sc.add(sh);
+const wm=new M(new Cy(1,1,1,36),new THREE.MeshStandardMaterial({color:0x2d8cff,transparent:true,opacity:.75}));wm.position.set(X,4.35,Z);sc.add(wm);tk.T2={w:wm,y0:3.85,H:1};
+const roof=A(new M(new Sp(1.08,36,12,0,Math.PI*2,0,Math.PI/2),mat(0x7f94a5,{roughness:.5})));roof.scale.y=.38;roof.position.set(X,4.85,Z);
+const rm=new M(new THREE.TorusGeometry(1.06,.04,8,36),mat(0xd8dde2));rm.rotation.x=Math.PI/2;rm.position.set(X,3.85,Z);sc.add(rm);
+lab('Tank2 (หอถังสูง)',X,5.7,Z,.9);tag('in',P([360,565,4.1]),.5);tag('out',P([321,545,.6]),.7)}
+// Pressure tank (like photo): blue vessel, domed ends, rib, gauge, lug, leg stand
+const gauge={};
+{const X=(519-450)/32,Z=(490-420)/32,r=.85,ch=1.7,y0=.95,bl=mat(0x4f93d6,{roughness:.5,metalness:.15}),dm=mat(0x4488cc,{roughness:.5,metalness:.15});slab(X,Z,1.4);
+const g=new THREE.Group();g.position.set(X,0,Z);sc.add(g);const G=m=>{m.castShadow=m.receiveShadow=true;g.add(m);return m};
+const body=G(new M(new Cy(r,r,ch,40),bl));body.position.y=y0+.38+ch/2;
+const top=G(new M(new Sp(r,40,16,0,Math.PI*2,0,Math.PI/2),dm));top.scale.y=.45;top.position.y=y0+.38+ch;
+const bot=G(new M(new Sp(r,40,16,0,Math.PI*2,Math.PI/2,Math.PI/2),dm));bot.scale.y=.45;bot.position.y=y0+.38;
+[.45,.56].forEach(o=>{const t=G(new M(new THREE.TorusGeometry(r+.01,.02,6,40),dm));t.rotation.x=Math.PI/2;t.position.y=y0+.38+o});
+[0,2.1,4.2].forEach(a=>{const lg=G(new M(new Bx(.1,y0+.25,.1),mat(0x3c78b8)));lg.position.set(Math.cos(a)*.62,(y0+.25)/2,Math.sin(a)*.62);const ft=G(new M(new Bx(.26,.03,.26),mat(0x3c78b8)));ft.position.set(Math.cos(a)*.62,.015,Math.sin(a)*.62)});
+const nz=G(new M(new Cy(.11,.11,.2,18),steel));nz.position.y=y0-.02;const nf=G(new M(new Cy(.17,.17,.05,20),steel));nf.position.y=y0+.04;
+const ty=y0+.38+ch+.38;
+G(new M(new Cy(.035,.035,.34,10),steel)).position.y=ty+.1;
+const lug=G(new M(new THREE.TorusGeometry(.1,.025,8,16),mat(0x3c78b8)));lug.position.set(.42,ty-.12,0);lug.rotation.y=Math.PI/2;
+const gc=document.createElement('canvas');gc.width=gc.height=128;const gx=gc.getContext('2d');gx.fillStyle='#f6f6f6';gx.beginPath();gx.arc(64,64,62,0,7);gx.fill();gx.strokeStyle='#222';gx.lineWidth=2;for(let i=0;i<=10;i++){const a=(225-i*27)*Math.PI/180;gx.beginPath();gx.moveTo(64+46*Math.cos(a),64-46*Math.sin(a));gx.lineTo(64+57*Math.cos(a),64-57*Math.sin(a));gx.stroke()}gx.fillStyle='#222';gx.font='bold 15px sans-serif';gx.textAlign='center';gx.fillText('bar',64,100);
+const gf=G(new M(new THREE.CircleGeometry(.24,32),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(gc)})));gf.position.set(0,ty+.4,.03);
+const bz=G(new M(new THREE.TorusGeometry(.245,.03,8,32),steel));bz.position.set(0,ty+.4,.03);
+const pv=new THREE.Group();pv.position.set(0,ty+.4,.045);g.add(pv);const nd=new M(new Bx(.2,.015,.01),mat(0xcc1111));nd.position.x=.08;pv.add(nd);gauge.pv=pv;gauge.v=.05;
+lab('Pressure Tank (ถังแรงดัน)',X,ty+1.1,Z,.9);tag('io',P([519,490,.6]),.55)}
+// Filter1 (like photo): stainless vessel, skirt legs, nameplate, sight tube
+{const X=(234-450)/32,Z=(495-420)/32,r=.55,y0=.55,H=1.75,sm=mat(0xd8dde3,{roughness:.25,metalness:.4});slab(X,Z,1.1);
+const g=new THREE.Group();g.position.set(X,0,Z);sc.add(g);const G=m=>{m.castShadow=m.receiveShadow=true;g.add(m);return m};
+G(new M(new Cy(r,r,H,36),sm)).position.y=y0+H/2;
+const top=G(new M(new Sp(r,36,14,0,Math.PI*2,0,Math.PI/2),sm));top.scale.y=.4;top.position.y=y0+H;
+const bot=G(new M(new Sp(r,36,14,0,Math.PI*2,Math.PI/2,Math.PI/2),sm));bot.scale.y=.4;bot.position.y=y0;
+[.35,H-.3].forEach(o=>{const t=G(new M(new THREE.TorusGeometry(r+.005,.015,6,36),mat(0xaab2ba)));t.rotation.x=Math.PI/2;t.position.y=y0+o});
+for(let i=0;i<4;i++){const a=i*Math.PI/2+Math.PI/4,c=Math.cos(a),s=Math.sin(a);const lg=G(new M(new Cy(.04,.04,.7,8),mat(0xaab2ba,{metalness:.4})));lg.position.set(c*.5,.35,s*.5);lg.rotation.set(s*.18,0,-c*.18)}
+const np=G(new M(new Bx(.34,.24,.012),mat(0xffffff)));np.position.set(0,1.5,r+.005);
+const pc=document.createElement('canvas');pc.width=128;pc.height=96;const px=pc.getContext('2d');px.fillStyle='#fff';px.fillRect(0,0,128,96);px.fillStyle='#456';for(let i=0;i<9;i++)px.fillRect(10,10+i*9,i%3?90:60,3);const pl=G(new M(new THREE.PlaneGeometry(.32,.22),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(pc)})));pl.position.set(0,1.5,r+.012);
+const vm=mat(0xff6a2b),vb=G(new M(new Sp(.09,14,10),mat(0x6aa9d6)));vb.position.set(0,y0+H+.3,0);G(new M(new Cy(.04,.04,.16,10),steel)).position.set(0,y0+H+.2,0);const hv=G(new M(new Bx(.3,.04,.07),vm));hv.position.set(.1,y0+H+.42,0);
+const dr=G(new M(new Cy(.04,.04,.2,10),steel));dr.position.set(-.3,.45,.45);dr.rotation.x=Math.PI/2.4;
+const stm=G(new M(new Cy(.05,.05,1.2,12),new THREE.MeshStandardMaterial({color:0xcfe9ff,transparent:true,opacity:.35})));stm.position.set(.72,1.35,0);
+const sw=G(new M(new Cy(.035,.035,1.2,12),new THREE.MeshStandardMaterial({color:0x2d8cff})));sw.position.set(.72,1.35,0);tk.Fi={w:sw,y0:.75,H:1.2,g};
+[[222,483,1.6,'in',0x2d8cff],[246,483,1,'out',0xff8a2b]].forEach(a=>{const p=P(a);cyl(.2,.08,steel,p,Z1,24);cyl(.205,.025,mat(a[4]),p.clone().addScaledVector(Z1,.06),Z1,24);tag(a[3],p,.55)});
+lab('Filter1 (ถังกรอง)',X,y0+H+1,Z,.9)}
+// Submersible pump + booster pump
+{const p=P([300,640,0]);A(new M(new Cy(.4,.4,1.8,20,1,true),new THREE.MeshStandardMaterial({color:0x667,transparent:true,opacity:.3,side:THREE.DoubleSide}))).position.set(p.x,-.8,p.z);
+A(new M(new Cy(.22,.22,.9,20),mat(0x3a6ea5,{metalness:.3}))).position.set(p.x,-1.1,p.z);A(new M(new Cy(.28,.28,.12,20),steel)).position.set(p.x,.03,p.z);
+lab('Submersible Pump (ปั๊มบาดาล)',p.x,1.1,p.z-.3,.8);tag('out',P([300,640,.6]),.5)}
+const pump=new THREE.Group(),pc=P([735,450,.55]);pump.position.set(pc.x,0,pc.z);sc.add(pump);
+const PG=(m,x,y,z,rot)=>{m.position.set(x,y,z);if(rot)m.rotation.set(rot[0],rot[1],rot[2]);m.castShadow=m.receiveShadow=true;pump.add(m);return m};
+const bluM=mat(0x2a74c9,{roughness:.28,metalness:.3}),dkM=mat(0x2b3440),moM=mat(0x2f6a9e,{roughness:.4,metalness:.25});
+PG(new M(new Bx(1.9,.12,2.4),mat(0x39424d)),0,.06,.5);
+PG(new M(new Cy(.4,.4,.38,36),bluM),0,.55,0,[Math.PI/2,0,0]);PG(new M(new THREE.TorusGeometry(.4,.05,12,36),bluM),0,.55,-.19);
+PG(new M(new Cy(.14,.14,.22,18),bluM),.5,.55,0,[0,0,Math.PI/2]);PG(new M(new Cy(.14,.14,.22,18),bluM),-.5,.55,0,[0,0,Math.PI/2]);
+[[1,0x2d8cff],[-1,0xff8a2b]].forEach(a=>{PG(new M(new Cy(.22,.22,.07,28),steel),a[0]*.62,.55,0,[0,0,Math.PI/2]);PG(new M(new Cy(.225,.22,.025,28),mat(a[1])),a[0]*.67,.55,0,[0,0,Math.PI/2]);
+for(let i=0;i<6;i++){const t=i*Math.PI/3;PG(new M(new Cy(.02,.02,.1,8),dkM),a[0]*.62,.55+Math.cos(t)*.17,Math.sin(t)*.17,[0,0,Math.PI/2])}});
+PG(new M(new Cy(.34,.34,.9,30),moM),0,.55,.68,[Math.PI/2,0,0]);for(let i=0;i<6;i++)PG(new M(new Cy(.36,.36,.05,30),dkM),0,.55,.32+i*.13,[Math.PI/2,0,0]);
+PG(new M(new Cy(.3,.34,.16,30),dkM),0,.55,1.2,[Math.PI/2,0,0]);PG(new M(new Bx(.22,.14,.24),dkM),0,.97,.7);
+PG(new M(new Bx(.5,.2,.2),dkM),0,.2,.0);PG(new M(new Bx(.5,.2,.2),dkM),0,.2,.7);
+const ledM=new THREE.MeshBasicMaterial({color:0x2ecc71});PG(new M(new Sp(.05,10,8),ledM),0,1.07,.7);
+const spin=new THREE.Group();spin.position.set(0,.55,-.23);pump.add(spin);const cn=new M(new THREE.ConeGeometry(.2,.04,3),mat(0xffd23f,{emissive:0x553300}));cn.rotation.x=Math.PI/2;spin.add(cn);
+lab('ปั๊มน้ำหลัก',pc.x,1.8,pc.z+.3,.8);tag('in',P([750,450,.55]),.95);tag('out',P([720,450,.55]),.95);
+// ---------- valves (ball valve model)
+const hits=[];
+Object.keys(valves).forEach(id=>{const v=valves[id],g=new THREE.Group();g.position.copy(v.pos);g.rotation.y=Math.atan2(-v.dir.z,v.dir.x);sc.add(g);
+const bm=mat(0x62a8d6,{roughness:.35}),nm=mat(0x7fbde3,{roughness:.4});const ad=(m,x,y,z)=>{m.position.set(x,y,z);m.castShadow=true;g.add(m);return m};
+const body=ad(new M(new Sp(.25,24,16),bm),0,0,0);body.scale.set(.9,1,1);
+[-1,1].forEach(s=>{ad(new M(new Cy(.17,.17,.16,6),nm),s*.27,0,0).rotation.z=Math.PI/2;ad(new M(new Cy(.135,.135,.14,16),nm),s*.38,0,0).rotation.z=Math.PI/2});
+ad(new M(new Cy(.07,.07,.2,12),mat(0x9aa4ae)),0,.28,0);
+const pv=new THREE.Group();pv.position.y=.37;g.add(pv);const hm=mat(0x2ecc71,{emissive:0x0a3a1a});
+const bar=new M(new Bx(.66,.05,.13),hm);bar.position.x=.2;bar.castShadow=true;pv.add(bar);const kn=new M(new Sp(.075,12,10),hm);kn.position.x=.54;pv.add(kn);
+[body,bar,kn].forEach(m=>{m.userData.v=id;hits.push(m)});v.pv=pv;v.hm=hm;lab(id,v.pos.x,v.pos.y+1,v.pos.z,.5)});
+// ---------- UI
+const $=i=>document.getElementById(i);
+function tg(label,get,set){const r=document.createElement('div');r.className='row';r.innerHTML='<span>'+label+'</span>';const b=document.createElement('button');r.appendChild(b);b.onclick=()=>set(!get());r.upd=()=>{b.textContent=get()?'เปิด':'ปิด';b.className=get()?'on':'off'};return r}
+const rows=[];
+[['ปั๊มบาดาล','sub'],['ปั๊มน้ำหลัก','pump']].forEach(a=>{const r=tg(a[0],()=>st[a[1]],x=>st[a[1]]=x);$('pumps').appendChild(r);rows.push(r)});
+Object.keys(valves).forEach(id=>{const r=tg(id+' '+VN[id],()=>valves[id].open,x=>valves[id].open=x);$('vl').appendChild(r);rows.push(r)});
+$('ao').onclick=()=>Object.values(valves).forEach(v=>v.open=true);$('ac').onclick=()=>Object.values(valves).forEach(v=>v.open=false);$('rv').onclick=resetCam;
+function sw(id,arr){let s=true;$(id).onclick=()=>{s=!s;arr.forEach(x=>x.visible=s);$(id).textContent=s?'แสดง':'ซ่อน';$(id).className=s?'on':'off'}}sw('b1',pipeLabels);sw('b2',portTags);
+$('fold').onclick=()=>{const b=$('body');b.classList.toggle('h');$('fold').textContent=b.classList.contains('h')?'แสดง':'ซ่อน'};
+const rc=new THREE.Raycaster(),mp=new THREE.Vector2();let dn;
+rd.domElement.addEventListener('pointerdown',e=>dn=[e.clientX,e.clientY]);
+rd.domElement.addEventListener('pointerup',e=>{if(!dn||Math.hypot(e.clientX-dn[0],e.clientY-dn[1])>5)return;mp.set(e.clientX/innerWidth*2-1,-(e.clientY/innerHeight)*2+1);rc.setFromCamera(mp,cam);const h=rc.intersectObjects(hits)[0];if(h)valves[h.object.userData.v].open^=1});
+// ---------- solver (follows arrow directions)
+const adj={};EE.forEach(e=>{(adj[e.f]=adj[e.f]||[]).push(e)});let dist={};
+const isOpen=e=>!e.gate||valves[e.gate].open;
+function solve(){dist={};const q=[],add=n=>{dist[n]=0;q.push(n)};if(st.sub)add('S');if(lv[0]>.03)add('T1o');if(lv[1]>.03)add('T2o');
+while(q.length){const n=q.shift();for(const e of adj[n]||[]){if(!isOpen(e)||(e.pump&&!st.pump))continue;if(dist[e.t]===undefined){dist[e.t]=dist[n]+1;q.push(e.t)}}}
+EE.forEach(e=>{e.on=dist[e.f]!==undefined&&isOpen(e)&&(!e.pump||st.pump)})}
+const eid=id=>EE.find(e=>e.id==id);
+function size(){rd.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()}addEventListener('resize',size);size();
+function at(e,d){const c=e.cum;for(let i=0;i<c.length-1;i++){const l=c[i+1]-c[i];if(l<1e-6)continue;if(d<=c[i+1]||i==c.length-2)return e.cl[i].clone().lerp(e.cl[i+1],Math.min(1,(d-c[i])/l))}return e.cl[0]}
+let t=0,last=performance.now();
+function loop(now){requestAnimationFrame(loop);const dt=Math.min(.05,(now-last)/1000);last=now;t+=dt;solve();
+const a2=eid('A2b').on,e1=eid('E1b').on,e3=eid('E3').on,td=eid('T2D').on;
+lv[0]=Math.max(0,Math.min(1,lv[0]+dt*((a2?.12:0)-(e1?.04:0))));lv[1]=Math.max(0,Math.min(1,lv[1]+dt*((e3?.12:0)-(td?.04:0))));
+['T1','T2'].forEach((k,i)=>{const o=tk[k],l=Math.max(.001,lv[i]);o.w.scale.y=l;o.w.position.y=o.y0+o.H*l/2});
+{const o=tk.Fi,l=dist.Fi!==undefined?1:.02;o.w.scale.y=l;o.w.position.y=o.y0+o.H*l/2}
+EE.forEach(e=>{if(!e.pts)return;e.mat.color.copy(e.base).multiplyScalar(e.on?1:.5);e.mat.emissive.copy(e.base).multiplyScalar(e.on?.35:0);
+e.ps.forEach((m,i)=>{m.visible=e.on;if(e.on)m.position.copy(at(e,((i/e.n)*e.len+t*1.8)%e.len))})});
+drops.forEach(o=>{const on=o.e.on;o.m.visible=on;if(on){const f=(t*1.1+o.i/3)%1;o.m.position.set(o.p.x,o.p.y-(o.p.y-o.floor)*f*f,o.p.z)}});
+Object.values(valves).forEach(v=>{const g=v.open?0:Math.PI/2;v.pv.rotation.y+=(g-v.pv.rotation.y)*.2;v.hm.color.setHex(v.open?0x2ecc71:0xe74c3c);v.hm.emissive.setHex(v.open?0x0a3a1a:0x4a0f0f)});
+const dry=st.pump&&dist.Pin===undefined;if(st.pump&&!dry)spin.rotation.z+=dt*14;
+ledM.color.setHex(!st.pump?0x555555:dry?0xffa000:0x2ecc71);
+gauge.v+=((dist.PTk!==undefined?.7:.05)-gauge.v)*dt*1.5;gauge.pv.rotation.z=(225-gauge.v*270)*Math.PI/180;
+rows.forEach(r=>r.upd());
+$('lv').innerHTML='ระดับน้ำ Tank1: '+Math.round(lv[0]*100)+'%<br>ระดับน้ำ Tank2: '+Math.round(lv[1]*100)+'%<br>แรงดันถังแรงดัน: '+(dist.PTk!==undefined?'มีแรงดัน':'ต่ำ');
+$('st').textContent=dry?'⚠ ปั๊มน้ำหลักไม่มีน้ำเข้า (Tank1 หมด หรือวาล์ว V2/V3 ปิด)':'';
+ctl.update();rd.render(sc,cam)}
+requestAnimationFrame(loop);
+</script></body></html>
